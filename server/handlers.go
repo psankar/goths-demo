@@ -82,6 +82,8 @@ func (srv *server) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (srv *server) AddPostHandler(w http.ResponseWriter, r *http.Request) {}
+
 func checkAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(cookieName)
