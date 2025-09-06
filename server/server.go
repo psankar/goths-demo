@@ -13,6 +13,10 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+const (
+	cookieName = "goths-session"
+)
+
 type server struct {
 	mux     *http.ServeMux
 	sqldb   *sql.DB
@@ -23,7 +27,11 @@ func Run() {
 	srv := server{
 		mux: http.DefaultServeMux,
 	}
-	srv.mux.HandleFunc("/", srv.rootHandler)
+	srv.mux.HandleFunc("/", srv.RootHandler)
+	srv.mux.HandleFunc("GET /login", srv.LoginGetHandler)
+	srv.mux.HandleFunc("POST /login", srv.LoginPostHandler)
+	srv.mux.HandleFunc("GET /logout", srv.LogoutHandler)
+	srv.mux.HandleFunc("GET /home", checkAuth(srv.HomeHandler))
 
 	log.Println("Applying DB migrations")
 	srv.initDB()
@@ -32,31 +40,31 @@ func Run() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-func (s *server) initDB() {
+func (srv *server) initDB() {
 	ddl, err := os.ReadFile("sqlc/schema.sql")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	s.sqldb, err = sql.Open("sqlite", ":memory:")
+	srv.sqldb, err = sql.Open("sqlite", ":memory:")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// create table
-	if _, err := s.sqldb.Exec(string(ddl)); err != nil {
+	if _, err := srv.sqldb.Exec(string(ddl)); err != nil {
 		log.Fatal(err)
 	}
 
-	s.queries = db.New(s.sqldb)
+	srv.queries = db.New(srv.sqldb)
 
 	// create users
-	tx, err := s.sqldb.Begin()
+	tx, err := srv.sqldb.Begin()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	qtx := s.queries.WithTx(tx)
+	qtx := srv.queries.WithTx(tx)
 	for i := 0; i < 100; i++ {
 		err = qtx.AddUser(context.Background(), db.AddUserParams{
 			Username: sql.NullString{
