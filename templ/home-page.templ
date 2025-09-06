@@ -1,9 +1,12 @@
 package templ
 
+import "goths-demo/pkg"
+
 templ HomePage() {
 	@BasePage() {
 		<div id="home-page">
 			<h1>Home Page</h1>
+			@AddPostForm(pkg.AddPostFormValues{}, map[string]string{}, "")
 			<button hx-get="/logout">logout</button>
 		</div>
 	}

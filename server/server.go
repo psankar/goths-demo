@@ -32,7 +32,7 @@ func Run() {
 	srv.mux.HandleFunc("POST /login", srv.LoginPostHandler)
 	srv.mux.HandleFunc("GET /logout", srv.LogoutHandler)
 	srv.mux.HandleFunc("GET /home", checkAuth(srv.HomeHandler))
-	srv.mux.HandleFunc("POST /posts", checkAuth(srv.AddPostHandler))
+	srv.mux.HandleFunc("POST /add-post", checkAuth(srv.AddPostHandler))
 
 	log.Println("Applying DB migrations")
 	srv.initDB()

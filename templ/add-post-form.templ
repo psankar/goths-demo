@@ -1,4 +1,28 @@
 package templ
 
-templ AddPostForm() {
+import "goths-demo/pkg"
+
+templ AddPostForm(values pkg.AddPostFormValues, errors map[string]string, success string) {
+	<form hx-post="/add-post">
+		<div id="system-message">
+			if errors["system"] != "" {
+				<div style="color: red;">{ errors["system"] }</div>
+			}
+			if success != "" {
+				<div style="color: green;">{ success }</div>
+			}
+		</div>
+		<textarea name="Post" 
+			hx-on:input="document.getElementById('system-message').innerHTML = ''; document.getElementById('post-error').innerHTML = ''">
+			{ values.Post }
+		</textarea>
+		<div id="post-error">
+			if errors["Post"] != "" {
+				<div style="color: red;">{ errors["Post"] }</div>
+			}
+		</div>
+		<button type="submit">
+			Add Post
+		</button>
+	</form>
 }

@@ -3,10 +3,12 @@ package server
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"goths-demo/pkg"
 	"goths-demo/sqlc/db"
 	"goths-demo/templ"
 )
@@ -82,7 +84,48 @@ func (srv *server) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (srv *server) AddPostHandler(w http.ResponseWriter, r *http.Request) {}
+func (srv *server) AddPostHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	values := pkg.AddPostFormValues{
+		Post: r.FormValue("Post"),
+	}
+
+	errors := values.Validate()
+
+	// If validation fails, return form with errors
+	if len(errors) > 0 {
+		templ.AddPostForm(values, errors, "").Render(r.Context(), w)
+		return
+	}
+
+	// Get username from cookie (checkAuth middleware ensures this exists)
+	cookie, _ := r.Cookie(cookieName)
+	username := cookie.Value
+
+	// Create the post using the updated query that returns post ID
+	postID, err := srv.queries.AddPost(r.Context(), db.AddPostParams{
+		Content:  sql.NullString{String: values.Post, Valid: true},
+		Username: sql.NullString{String: username, Valid: true},
+	})
+	if err != nil {
+		slog.Error("Error creating post", "error", err)
+		systemErrors := map[string]string{
+			"system": "Failed to create post. Please try again.",
+		}
+		templ.AddPostForm(values, systemErrors, "").Render(r.Context(), w)
+		return
+	}
+
+	// Success - return fresh form with success message including post ID
+	emptyValues := pkg.AddPostFormValues{}
+	emptyErrors := map[string]string{}
+	successMessage := fmt.Sprintf("Post created successfully! (ID: %d)", postID)
+	templ.AddPostForm(emptyValues, emptyErrors, successMessage).Render(r.Context(), w)
+}
 
 func checkAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
