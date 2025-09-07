@@ -7,10 +7,12 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"sync"
+	"time"
 
 	"goths-demo/sqlc/db"
 
+	natsserver "github.com/nats-io/nats-server/v2/server"
+	"github.com/nats-io/nats.go"
 	_ "modernc.org/sqlite"
 )
 
@@ -25,25 +27,39 @@ type PostMessage struct {
 }
 
 type server struct {
-	mux            *http.ServeMux
-	sqldb          *sql.DB
-	queries        *db.Queries
-	postBroadcast  chan PostMessage
-	cleanupClients chan chan PostMessage
-	clients        map[chan PostMessage]bool
-	clientsMutex   sync.RWMutex
+	mux        *http.ServeMux
+	sqldb      *sql.DB
+	queries    *db.Queries
+	nats       *nats.Conn
+	natsServer *natsserver.Server
 }
 
 func Run() {
+	var err error
 	srv := server{
-		mux:            http.DefaultServeMux,
-		postBroadcast:  make(chan PostMessage, 100),
-		cleanupClients: make(chan chan PostMessage, 100),
-		clients:        make(map[chan PostMessage]bool),
+		mux: http.DefaultServeMux,
 	}
 
-	// Start the broadcast goroutine
-	go srv.broadcastPosts()
+	// Start NATS server
+	srv.natsServer, err = natsserver.NewServer(&natsserver.Options{
+		Port: 4222,
+		// Other options like logging can be configured here
+	})
+	if err != nil {
+		log.Fatal("Error starting NATS server:", err)
+	}
+	go srv.natsServer.Start()
+	if !srv.natsServer.ReadyForConnections(_TIMEOUT) {
+		log.Fatal("NATS server did not become ready")
+	}
+
+	// Connect to NATS
+	srv.nats, err = nats.Connect(srv.natsServer.ClientURL())
+	if err != nil {
+		log.Fatal("Error connecting to NATS:", err)
+	}
+	defer srv.nats.Close()
+
 	srv.mux.HandleFunc("/", srv.RootHandler)
 	srv.mux.HandleFunc("GET /login", srv.LoginGetHandler)
 	srv.mux.HandleFunc("POST /login", srv.LoginPostHandler)
@@ -56,7 +72,7 @@ func Run() {
 	srv.initDB()
 
 	log.Println("Started server http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":8080", srv.mux))
 }
 
 func (srv *server) initDB() {
@@ -106,29 +122,4 @@ func (srv *server) initDB() {
 	}
 }
 
-func (srv *server) broadcastPosts() {
-	for {
-		select {
-		case post := <-srv.postBroadcast:
-			srv.clientsMutex.RLock()
-			for client := range srv.clients {
-				select {
-				case client <- post:
-				default:
-					// Client channel is full, signal for cleanup
-					select {
-					case srv.cleanupClients <- client:
-					default:
-					}
-				}
-			}
-			srv.clientsMutex.RUnlock()
-
-		case deadClient := <-srv.cleanupClients:
-			srv.clientsMutex.Lock()
-			delete(srv.clients, deadClient)
-			close(deadClient)
-			srv.clientsMutex.Unlock()
-		}
-	}
-}
+const _TIMEOUT = 2 * time.Second

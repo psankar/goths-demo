@@ -2,7 +2,13 @@ package templ
 
 import "fmt"
 
-templ Timeline() {
+type TimelinePostData struct {
+	Username string
+	Content  string
+	PostID   int64
+}
+
+templ Timeline(posts []TimelinePostData) {
 	<div class="w-full max-w-2xl mx-auto mt-8">
 		<h2 class="text-2xl font-bold mb-4">Timeline</h2>
 		<div
@@ -11,10 +17,9 @@ templ Timeline() {
 			ws-connect="/timeline"
 			class="space-y-4"
 		>
-			<div class="text-center text-gray-500 py-8">
-				<span class="loading loading-dots loading-lg"></span>
-				<p>Loading timeline...</p>
-			</div>
+			for _, post := range posts {
+				@TimelinePost(post.Username, post.Content, post.PostID)
+			}
 		</div>
 	</div>
 }
@@ -40,14 +45,8 @@ templ TimelinePost(username, content string, postID int64) {
 	</div>
 }
 
-templ TimelineInitial() {
-	<div class="text-center text-gray-500 py-8">
-		<p>No posts yet. Be the first to post something!</p>
-	</div>
-}
-
 templ TimelinePostSwap(username, content string, postID int64) {
-	<div hx-swap-oob="afterbegin:#timeline">
+	<div id="timeline" hx-swap-oob="afterbegin">
 		@TimelinePost(username, content, postID)
 	</div>
 }

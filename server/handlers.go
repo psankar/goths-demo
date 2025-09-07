@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 	"goths-demo/templ"
 
 	"github.com/gorilla/websocket"
+	"github.com/nats-io/nats.go"
 )
 
 var upgrader = websocket.Upgrader{
@@ -136,10 +138,12 @@ func (srv *server) AddPostHandler(w http.ResponseWriter, r *http.Request) {
 		PostID:   postID,
 	}
 
-	select {
-	case srv.postBroadcast <- postMsg:
-	default:
-		slog.Warn("Post broadcast channel is full, post not broadcasted")
+	// Marshal and publish to NATS
+	msg, err := json.Marshal(postMsg)
+	if err != nil {
+		slog.Error("Error marshalling post message", "error", err)
+	} else {
+		srv.nats.Publish("posts", msg)
 	}
 
 	// Success - return fresh form with success message including post ID
@@ -162,50 +166,39 @@ func (srv *server) GetTimelineHandler(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("WebSocket connection established", "remote_addr", r.RemoteAddr)
 
-	// Create a client channel for this connection
-	clientChan := make(chan PostMessage, 10)
-
-	// Register this client
-	srv.clientsMutex.Lock()
-	srv.clients[clientChan] = true
-	clientCount := len(srv.clients)
-	srv.clientsMutex.Unlock()
-
-	slog.Info("Client registered for WebSocket", "total_clients", clientCount)
-
-	// Cleanup when connection closes
-	defer func() {
-		select {
-		case srv.cleanupClients <- clientChan:
-		default:
+	// Subscribe to NATS topic
+	sub, err := srv.nats.Subscribe("posts", func(m *nats.Msg) {
+		var post PostMessage
+		if err := json.Unmarshal(m.Data, &post); err != nil {
+			slog.Error("Failed to unmarshal post", "error", err)
+			return
 		}
-	}()
 
-	// Send initial state using templ template
-	var buf bytes.Buffer
-	if err := templ.TimelineInitial().Render(r.Context(), &buf); err != nil {
-		slog.Error("Failed to render initial template", "error", err)
-		return
-	}
-
-	if err := conn.WriteMessage(websocket.TextMessage, buf.Bytes()); err != nil {
-		slog.Error("Failed to send initial message", "error", err)
-		return
-	}
-
-	// Listen for new posts and send them to the WebSocket
-	for post := range clientChan {
-		slog.Info("Got post in the getTLHandler", "post", post)
+		slog.Info("Got post from NATS", "post", post)
 		// Render the post swap template
 		var postBuf bytes.Buffer
 		swapTemplate := templ.TimelinePostSwap(post.Username, post.Content, post.PostID)
 		if err := swapTemplate.Render(r.Context(), &postBuf); err != nil {
 			slog.Error("Failed to render post swap template", "error", err)
-			continue
+			return
 		}
 
 		if err := conn.WriteMessage(websocket.TextMessage, postBuf.Bytes()); err != nil {
 			slog.Error("Failed to send post", "error", err)
+		}
+	})
+
+	if err != nil {
+		slog.Error("Failed to subscribe to NATS", "error", err)
+		return
+	}
+	defer sub.Unsubscribe()
+
+	// Keep the connection alive
+	for {
+		// Read message from client. If it returns an error, the connection is closed.
+		if _, _, err := conn.ReadMessage(); err != nil {
+			slog.Info("Client disconnected", "remote_addr", r.RemoteAddr)
 			break
 		}
 	}
