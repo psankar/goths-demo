@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 
 	"goths-demo/sqlc/db"
 
@@ -17,22 +19,37 @@ const (
 	cookieName = "goths-session"
 )
 
+type PostMessage struct {
+	Username string
+	Content  string
+	PostID   int64
+}
+
 type server struct {
-	mux     *http.ServeMux
-	sqldb   *sql.DB
-	queries *db.Queries
+	mux           *http.ServeMux
+	sqldb         *sql.DB
+	queries       *db.Queries
+	postBroadcast chan PostMessage
+	clients       map[chan PostMessage]bool
+	clientsMutex  sync.RWMutex
 }
 
 func Run() {
 	srv := server{
-		mux: http.DefaultServeMux,
+		mux:           http.DefaultServeMux,
+		postBroadcast: make(chan PostMessage, 100),
+		clients:       make(map[chan PostMessage]bool),
 	}
+
+	// Start the broadcast goroutine
+	go srv.broadcastPosts()
 	srv.mux.HandleFunc("/", srv.RootHandler)
 	srv.mux.HandleFunc("GET /login", srv.LoginGetHandler)
 	srv.mux.HandleFunc("POST /login", srv.LoginPostHandler)
 	srv.mux.HandleFunc("GET /logout", srv.LogoutHandler)
 	srv.mux.HandleFunc("GET /home", checkAuth(srv.HomeHandler))
 	srv.mux.HandleFunc("POST /add-post", checkAuth(srv.AddPostHandler))
+	srv.mux.HandleFunc("/timeline", checkAuth(srv.GetTimelineHandler))
 
 	log.Println("Applying DB migrations")
 	srv.initDB()
@@ -85,5 +102,23 @@ func (srv *server) initDB() {
 	err = tx.Commit()
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func (srv *server) broadcastPosts() {
+	for post := range srv.postBroadcast {
+		slog.Error("Post received in the broadcaster", "post", post)
+		srv.clientsMutex.RLock()
+		for client := range srv.clients {
+			select {
+			case client <- post:
+				slog.Error("post sent to client", "post", post)
+			default:
+				// Client channel is full, remove it
+				close(client)
+				delete(srv.clients, client)
+			}
+		}
+		srv.clientsMutex.RUnlock()
 	}
 }

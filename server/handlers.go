@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -11,7 +12,15 @@ import (
 	"goths-demo/pkg"
 	"goths-demo/sqlc/db"
 	"goths-demo/templ"
+
+	"github.com/gorilla/websocket"
 )
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Allow all origins for now
+	},
+}
 
 func (srv *server) RootHandler(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(cookieName)
@@ -120,11 +129,86 @@ func (srv *server) AddPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Broadcast the new post to all WebSocket clients
+	postMsg := PostMessage{
+		Username: username,
+		Content:  values.Post,
+		PostID:   postID,
+	}
+
+	select {
+	case srv.postBroadcast <- postMsg:
+	default:
+		slog.Warn("Post broadcast channel is full, post not broadcasted")
+	}
+
 	// Success - return fresh form with success message including post ID
 	emptyValues := pkg.AddPostFormValues{}
 	emptyErrors := map[string]string{}
 	successMessage := fmt.Sprintf("Post created successfully! (ID: %d)", postID)
 	templ.AddPostForm(emptyValues, emptyErrors, successMessage).Render(r.Context(), w)
+}
+
+func (srv *server) GetTimelineHandler(w http.ResponseWriter, r *http.Request) {
+	slog.Info("WebSocket connection attempt", "remote_addr", r.RemoteAddr)
+	
+	// Upgrade HTTP connection to WebSocket
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		slog.Error("WebSocket upgrade failed", "error", err)
+		return
+	}
+	defer conn.Close()
+	
+	slog.Info("WebSocket connection established", "remote_addr", r.RemoteAddr)
+
+	// Create a client channel for this connection
+	clientChan := make(chan PostMessage, 10)
+
+	// Register this client
+	srv.clientsMutex.Lock()
+	srv.clients[clientChan] = true
+	clientCount := len(srv.clients)
+	srv.clientsMutex.Unlock()
+	
+	slog.Info("Client registered for WebSocket", "total_clients", clientCount)
+
+	// Cleanup when connection closes
+	defer func() {
+		srv.clientsMutex.Lock()
+		delete(srv.clients, clientChan)
+		close(clientChan)
+		srv.clientsMutex.Unlock()
+	}()
+
+	// Send initial state using templ template
+	var buf bytes.Buffer
+	if err := templ.TimelineInitial().Render(r.Context(), &buf); err != nil {
+		slog.Error("Failed to render initial template", "error", err)
+		return
+	}
+
+	if err := conn.WriteMessage(websocket.TextMessage, buf.Bytes()); err != nil {
+		slog.Error("Failed to send initial message", "error", err)
+		return
+	}
+
+	// Listen for new posts and send them to the WebSocket
+	for post := range clientChan {
+		slog.Error("Got post in the getTLHandler", "post", post)
+		// Render the post swap template
+		var postBuf bytes.Buffer
+		swapTemplate := templ.TimelinePostSwap(post.Username, post.Content, post.PostID)
+		if err := swapTemplate.Render(r.Context(), &postBuf); err != nil {
+			slog.Error("Failed to render post swap template", "error", err)
+			continue
+		}
+
+		if err := conn.WriteMessage(websocket.TextMessage, postBuf.Bytes()); err != nil {
+			slog.Error("Failed to send post", "error", err)
+			break
+		}
+	}
 }
 
 func checkAuth(next http.HandlerFunc) http.HandlerFunc {

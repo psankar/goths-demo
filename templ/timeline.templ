@@ -1,0 +1,53 @@
+package templ
+
+import "fmt"
+
+templ Timeline() {
+	<div class="w-full max-w-2xl mx-auto mt-8">
+		<h2 class="text-2xl font-bold mb-4">Timeline</h2>
+		<div
+			id="timeline"
+			hx-ext="ws"
+			ws-connect="/timeline"
+			class="space-y-4"
+		>
+			<div class="text-center text-gray-500 py-8">
+				<span class="loading loading-dots loading-lg"></span>
+				<p>Loading timeline...</p>
+			</div>
+		</div>
+	</div>
+}
+
+templ TimelinePost(username, content string, postID int64) {
+	<div class="card bg-base-100 shadow-sm border border-base-200">
+		<div class="card-body p-4">
+			<div class="flex items-start space-x-3">
+				<div class="avatar placeholder">
+					<div class="bg-neutral text-neutral-content rounded-full w-10 h-10">
+						<span class="text-sm">{ username[:1] }</span>
+					</div>
+				</div>
+				<div class="flex-1">
+					<div class="flex items-center space-x-2 mb-1">
+						<span class="font-semibold text-sm">{ username }</span>
+						<span class="text-xs text-gray-500">#{ fmt.Sprintf("%d", postID) }</span>
+					</div>
+					<p class="text-sm">{ content }</p>
+				</div>
+			</div>
+		</div>
+	</div>
+}
+
+templ TimelineInitial() {
+	<div class="text-center text-gray-500 py-8">
+		<p>Timeline is ready! New posts will appear here.</p>
+	</div>
+}
+
+templ TimelinePostSwap(username, content string, postID int64) {
+	<div hx-swap-oob="afterbegin:#timeline">
+		@TimelinePost(username, content, postID)
+	</div>
+}
