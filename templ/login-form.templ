@@ -2,19 +2,34 @@ package templ
 
 templ LoginForm(err string) {
 	@BasePage() {
-		<form id="login-form" method="post" hx-boost="true">
-			<fieldset class="fieldset bg-base-200 border-base-300 rounded-box w-xs border p-4">
-				<label for="username" class="label">Username:</label>
-				<input id="username" name="username" class="input" required/>
-				<label for="password" class="label">Password:</label>
-				<input type="password" id="password" name="password" class="input" required/>
-				<button type="submit" class="btn btn-primary">Login</button>
-				if err != "" {
-					<div class="alert alert-error">
-						<span>{ err }</span>
-					</div>
-				}
-			</fieldset>
-		</form>
+		<div class="hero min-h-screen bg-base-200">
+			<div class="hero-content flex-col lg:flex-row-reverse">
+				<div class="card flex-shrink-0 w-full max-w-sm shadow-2xl bg-base-100">
+					<form id="login-form" method="post" hx-boost="true" class="card-body">
+						<div class="form-control">
+							<label class="label" for="username">
+								<span class="label-text">Username</span>
+							</label>
+							<input id="username" name="username" type="text" placeholder="username" class="input input-bordered" required/>
+						</div>
+						<div class="form-control">
+							<label class="label" for="password">
+								<span class="label-text">Password</span>
+							</label>
+							<input type="password" id="password" name="password" placeholder="password" class="input input-bordered" required/>
+						</div>
+						if err != "" {
+							<div class="alert alert-error mb-4">
+								<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+								<span>{ err }</span>
+							</div>
+						}
+						<div class="form-control mt-6">
+							<button type="submit" class="btn btn-primary">Login</button>
+						</div>
+					</form>
+				</div>
+			</div>
+		</div>
 	}
 }
