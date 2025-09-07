@@ -3,10 +3,10 @@ package templ
 import "goths-demo/pkg"
 
 templ AddPostForm(values pkg.AddPostFormValues, errors map[string]string, success string) {
-	<div class="card w-full max-w-md bg-base-100 shadow-xl">
+	<div id="add-post-form" class="card w-full max-w-md bg-base-100 shadow-xl">
 		<div class="card-body">
 			<h2 class="card-title">Add New Post</h2>
-			<form hx-post="/add-post" class="space-y-4">
+			<form hx-post="/add-post" hx-target="#add-post-form" hx-swap="outerHTML" class="space-y-4">
 				<div id="system-message">
 					if errors["system"] != "" {
 						<div class="alert alert-error">
