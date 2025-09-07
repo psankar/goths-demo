@@ -3,15 +3,18 @@ package templ
 templ LoginForm(err string) {
 	@BasePage() {
 		<form id="login-form" method="post" hx-boost="true">
-			<h1>Login</h1>
-			<label for="username">Username:</label>
-			<input id="username" name="username" required/>
-			<label for="password">Password:</label>
-			<input type="password" id="password" name="password" required/>
-			<button type="submit">Login</button>
-			if err != "" {
-				<p>{ err }</p>
-			}
+			<fieldset class="fieldset bg-base-200 border-base-300 rounded-box w-xs border p-4">
+				<label for="username" class="label">Username:</label>
+				<input id="username" name="username" class="input" required/>
+				<label for="password" class="label">Password:</label>
+				<input type="password" id="password" name="password" class="input" required/>
+				<button type="submit" class="btn btn-primary">Login</button>
+				if err != "" {
+					<div class="alert alert-error">
+						<span>{ err }</span>
+					</div>
+				}
+			</fieldset>
 		</form>
 	}
 }
