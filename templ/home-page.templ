@@ -4,10 +4,25 @@ import "goths-demo/pkg"
 
 templ HomePage() {
 	@BasePage() {
-		<div id="home-page">
-			<h1>Home Page</h1>
-			@AddPostForm(pkg.AddPostFormValues{}, map[string]string{}, "")
-			<button hx-get="/logout">logout</button>
+		<div id="home-page" class="min-h-screen bg-base-200">
+			<div class="navbar bg-base-100 shadow-lg">
+				<div class="flex-1">
+					<h1 class="text-xl font-bold">Goths</h1>
+				</div>
+				<div class="flex-none">
+					<button hx-get="/logout" class="btn btn-outline btn-sm">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+						</svg>
+						Logout
+					</button>
+				</div>
+			</div>
+			<div class="container mx-auto px-4 py-8">
+				<div class="flex justify-center">
+					@AddPostForm(pkg.AddPostFormValues{}, map[string]string{}, "")
+				</div>
+			</div>
 		</div>
 	}
 }
