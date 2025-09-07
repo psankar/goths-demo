@@ -151,7 +151,7 @@ func (srv *server) AddPostHandler(w http.ResponseWriter, r *http.Request) {
 
 func (srv *server) GetTimelineHandler(w http.ResponseWriter, r *http.Request) {
 	slog.Info("WebSocket connection attempt", "remote_addr", r.RemoteAddr)
-	
+
 	// Upgrade HTTP connection to WebSocket
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -159,7 +159,7 @@ func (srv *server) GetTimelineHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
-	
+
 	slog.Info("WebSocket connection established", "remote_addr", r.RemoteAddr)
 
 	// Create a client channel for this connection
@@ -170,15 +170,15 @@ func (srv *server) GetTimelineHandler(w http.ResponseWriter, r *http.Request) {
 	srv.clients[clientChan] = true
 	clientCount := len(srv.clients)
 	srv.clientsMutex.Unlock()
-	
+
 	slog.Info("Client registered for WebSocket", "total_clients", clientCount)
 
 	// Cleanup when connection closes
 	defer func() {
-		srv.clientsMutex.Lock()
-		delete(srv.clients, clientChan)
-		close(clientChan)
-		srv.clientsMutex.Unlock()
+		select {
+		case srv.cleanupClients <- clientChan:
+		default:
+		}
 	}()
 
 	// Send initial state using templ template
@@ -195,7 +195,7 @@ func (srv *server) GetTimelineHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Listen for new posts and send them to the WebSocket
 	for post := range clientChan {
-		slog.Error("Got post in the getTLHandler", "post", post)
+		slog.Info("Got post in the getTLHandler", "post", post)
 		// Render the post swap template
 		var postBuf bytes.Buffer
 		swapTemplate := templ.TimelinePostSwap(post.Username, post.Content, post.PostID)

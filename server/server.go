@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"log/slog"
 	"net/http"
 	"os"
 	"sync"
@@ -26,19 +25,21 @@ type PostMessage struct {
 }
 
 type server struct {
-	mux           *http.ServeMux
-	sqldb         *sql.DB
-	queries       *db.Queries
-	postBroadcast chan PostMessage
-	clients       map[chan PostMessage]bool
-	clientsMutex  sync.RWMutex
+	mux            *http.ServeMux
+	sqldb          *sql.DB
+	queries        *db.Queries
+	postBroadcast  chan PostMessage
+	cleanupClients chan chan PostMessage
+	clients        map[chan PostMessage]bool
+	clientsMutex   sync.RWMutex
 }
 
 func Run() {
 	srv := server{
-		mux:           http.DefaultServeMux,
-		postBroadcast: make(chan PostMessage, 100),
-		clients:       make(map[chan PostMessage]bool),
+		mux:            http.DefaultServeMux,
+		postBroadcast:  make(chan PostMessage, 100),
+		cleanupClients: make(chan chan PostMessage, 100),
+		clients:        make(map[chan PostMessage]bool),
 	}
 
 	// Start the broadcast goroutine
@@ -106,19 +107,28 @@ func (srv *server) initDB() {
 }
 
 func (srv *server) broadcastPosts() {
-	for post := range srv.postBroadcast {
-		slog.Error("Post received in the broadcaster", "post", post)
-		srv.clientsMutex.RLock()
-		for client := range srv.clients {
-			select {
-			case client <- post:
-				slog.Error("post sent to client", "post", post)
-			default:
-				// Client channel is full, remove it
-				close(client)
-				delete(srv.clients, client)
+	for {
+		select {
+		case post := <-srv.postBroadcast:
+			srv.clientsMutex.RLock()
+			for client := range srv.clients {
+				select {
+				case client <- post:
+				default:
+					// Client channel is full, signal for cleanup
+					select {
+					case srv.cleanupClients <- client:
+					default:
+					}
+				}
 			}
+			srv.clientsMutex.RUnlock()
+
+		case deadClient := <-srv.cleanupClients:
+			srv.clientsMutex.Lock()
+			delete(srv.clients, deadClient)
+			close(deadClient)
+			srv.clientsMutex.Unlock()
 		}
-		srv.clientsMutex.RUnlock()
 	}
 }
